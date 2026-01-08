@@ -1,0 +1,67 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Cargar modulo de br_netfilter
+  modprobe:
+    name: br_netfilter
+  ignore_errors: true
+  become: yes
+
+- name: Asegurarse de que el parametro bridge-nf-call-iptables
+  stat:
+    path: /proc/sys/net/bridge/bridge-nf-call-iptables
+  register: bridge_nf_call_iptables_stat
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['all'] }}"
+  ignore_errors: true
+
+- name: Asegurarse de que bridge-nf-call-iptables esta habilitado
+  sysctl:
+    name: net.bridge.bridge-nf-call-iptables
+    value: 1
+    state: present
+    reload: yes
+  when: bridge_nf_call_iptables_stat.results[0].stat.exists == true
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['all'] }}"
+
+- name: Instalar firewalld
+  package:
+    name: firewalld
+    state: present
+
+- name: Iniciar y habilitar firewalld
+  service:
+    name: firewalld
+    state: started
+    enabled: yes
+
+- name: Agregar puertos de Kubernetes al firewall
+  firewalld:
+    port: "{{ item }}"
+    state: enabled
+    permanent: yes
+  loop:
+    - "6443/tcp"
+    - "8443/tcp"
+    - "2379-2380/tcp"
+    - "10250/tcp"
+    - "10251/tcp"
+    - "10252/tcp"
+    - "10255/tcp"
+
+- name: Reload firewalld
+  service:
+    name: firewalld
+    state: reloaded
+  notify: Recargar firewalld
+
+- name: Habilitar IPv4 packet forwarding
+  ansible.builtin.lineinfile:
+    path: /etc/sysctl.conf
+    regexp: '^net.ipv4.ip_forward'
+    line: 'net.ipv4.ip_forward = 1'
+    state: present
+  notify: Aplicar configuraciones de sysctl
+
+- name: Aplicar configuraciones de sysctl
+  ansible.builtin.command: sysctl -p

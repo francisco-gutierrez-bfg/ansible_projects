@@ -1,0 +1,41 @@
+# Configuración de Cluster Kubernetes con Ansible
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Desplegar instancia de MetalLB
+  hosts: master1
+  become: yes
+
+  vars:
+    metallb_ip: "172.16.1.99/28"  # Dirección IP y máscara de red para MetalLB
+
+  tasks:
+    - name: Instalar MetalLB
+      ansible.builtin.shell: |
+        kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.11.0/manifests/namespace.yaml
+        kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.11.0/manifests/metallb.yaml
+        # Crear secret para MetalLB
+        kubectl create secret generic -n metallb-system memberlist --from-literal=secretkey="$(openssl rand -base64 128)"
+        # Configurar el pool de direcciones IP para MetalLB
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          namespace: metallb-system
+          name: config
+        data:
+          config: |
+            address-pools:
+            - name: default
+              protocol: layer2
+              addresses:
+              - {{ metallb_ip }}
+        EOF
+      notify:
+        - Recargar firewalld
+
+  handlers:
+    - name: Recargar firewalld
+      service:
+        name: firewalld
+        state: reloaded
+

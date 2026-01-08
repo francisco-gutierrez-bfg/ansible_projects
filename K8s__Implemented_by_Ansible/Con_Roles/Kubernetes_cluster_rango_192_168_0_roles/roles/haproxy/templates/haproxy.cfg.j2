@@ -1,0 +1,40 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+global
+    log /dev/log    local0
+    log /dev/log    local1 notice
+    chroot /var/lib/haproxy
+    stats timeout 30s
+    user haproxy
+    group haproxy
+    daemon
+
+    # Default SSL material locations
+    ca-base /etc/ssl/certs
+    crt-base /etc/ssl/private
+
+    # See: https://ssl-config.mozilla.org/#server=haproxy&version=2.0.13&config=intermediate&guideline=5.6
+    ssl-default-bind-ciphers PROFILE=SYSTEM
+    ssl-default-bind-options no-sslv3
+
+defaults
+    log     global
+    mode    http
+    option  httplog
+    option  dontlognull
+    timeout connect 5000
+    timeout client  50000
+    timeout server  50000
+
+frontend kubernetes-frontend
+    bind *:8443
+    option tcplog
+    mode tcp
+    default_backend kubernetes-backend
+
+backend kubernetes-backend
+    mode tcp
+    balance roundrobin
+    option tcp-check
+    server master1 192.168.0.27:6443 check
+    server master2 192.168.0.28:6443 check
+    server master3 192.168.0.29:6443 check

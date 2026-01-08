@@ -1,0 +1,31 @@
+# Configuración de Cluster Kubernetes con Ansible
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Instalar y Configurar HAProxy
+  hosts: masters
+  become: true
+  tasks:
+    - name: Instalar HAProxy
+      yum:
+        name: haproxy
+        state: present
+
+    - name: Configurar HAProxy
+      template:
+        src: haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+      notify: Reiniciar HAProxy
+
+    - name: Iniciar y habilitar HAProxy
+      systemd:
+        name: haproxy
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Reiniciar HAProxy
+      systemd:
+        name: haproxy
+        state: restarted
+        enabled: yes
+

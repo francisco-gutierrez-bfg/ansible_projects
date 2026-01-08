@@ -1,0 +1,41 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Configurar de nodos Kubernetes
+  hosts: all
+  become: yes
+  roles:
+    - dependencias
+    - containerd
+    - firewalld
+
+- name: Configurar generalidades de nodos master
+  hosts: masters
+  become: yes
+  roles:
+    - firewalld
+    - containerd
+    - haproxy
+    - keepalived
+
+- name: Configurar nodo maestro principal
+  hosts: master1
+  become: yes
+  vars:
+    kubeadm_init_output_file: "/tmp/kubeadm_init_output.txt"
+  roles:
+    - init
+    - metallb
+
+- name: Configurar control planes secundarios
+  hosts: masters:!master1
+  become: yes
+  roles:
+    - master_secundarios
+
+- name: Configurar nodos worker
+  hosts: workers
+  become: yes
+  roles:
+    - worker
+
+

@@ -1,0 +1,103 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Inicializar cluster de Kubernetes
+  command: kubeadm init --control-plane-endpoint "192.168.0.35:8443" --apiserver-advertise-address=192.168.0.35 --upload-certs --pod-network-cidr=10.244.0.0/16 --cri-socket /var/run/containerd/containerd.sock --ignore-preflight-errors=all
+  register: kubeadm_init
+  failed_when: "'timed out waiting for the condition' in kubeadm_init.stderr"
+  changed_when: "'timed out waiting for the condition' not in kubeadm_init.stderr"
+
+- name: Guardar el output del comando init
+  copy:
+    content: "{{ kubeadm_init.stdout_lines | join('\n') }}"
+    dest: "{{ kubeadm_init_output_file }}"
+    mode: '0644'
+
+- name: Guardando parametros en archivo /root/.kube/config
+  shell: |
+    cat /etc/kubernetes/admin.conf > /root/.kube/config
+  args:
+    creates: /root/.kube/config
+  when: inventory_hostname == groups['masters'][0]
+
+- name: Creando script con instrucciones para unir los nodos master
+  shell: |
+    grep -E "kubeadm join|discovery|--control-plane|--certificate-key" /tmp/kubeadm_init_output.txt | head -3 | sed -e '1s/^  //' > /joincluster_master.sh
+    chmod +x /joincluster_master.sh
+  args:
+    creates: /joincluster_master.sh
+
+- name: Estableciendo origen y destino de los scripts
+  ansible.builtin.fetch:
+    src: /joincluster_master.sh
+    dest: /joincluster_master.sh
+    flat: yes
+
+- name: Verificando permisos de los scripts
+  ansible.builtin.file:
+    path: /joincluster_master.sh
+    mode: '0765'
+
+- name: Enviando script de unión de control planes secundarios desde control plane principal (master1)
+  ansible.builtin.copy:
+    src: /joincluster_master.sh
+    dest: /joincluster_master.sh
+    owner: root
+    group: root
+    mode: '0765'
+  when: inventory_hostname != 'master1'
+
+- name: Creando script con instrucciones para unir los nodos worker
+  shell: |
+    kubeadm token create --print-join-command > /joincluster_worker.sh
+    chmod +x /joincluster_worker.sh
+  args:
+    creates: /joincluster_worker.sh
+
+- name: Estableciendo origen y destino de los scripts
+  ansible.builtin.fetch:
+    src: /joincluster_worker.sh
+    dest: /joincluster_worker.sh
+    flat: yes
+
+- name: Verificando permisos de los scripts
+  ansible.builtin.file:
+    path: /joincluster_worker.sh
+    mode: '0765'
+
+- name: Enviando script de unión de nodos worker desde control plane principal (master1)
+  ansible.builtin.copy:
+    src: /joincluster_worker.sh
+    dest: /joincluster_worker.sh
+    owner: root
+    group: root
+    mode: '0765'
+
+- name: Esperar hasta que el servicio de Kubernetes API server se encuentre disponible
+  uri:
+    url: "https://192.168.0.35:8443/healthz"
+    validate_certs: no
+  register: api_server_ready
+  until: api_server_ready.status == 200
+  retries: 60
+  delay: 10
+  ignore_errors: yes
+
+- name: Copiar manifest de ClusterRoleBinding a los nodos
+  copy:
+    src: files/anonymous-admin.yaml
+    dest: /tmp/anonymous-admin.yaml
+
+- name: Aplicar manifest de ClusterRoleBinding
+  command: kubectl apply -f /tmp/anonymous-admin.yaml --validate=false --kubeconfig /root/.kube/config
+  register: crb_result
+  changed_when: crb_result.rc == 0
+
+- name: Instalar Calico CNI
+  become: yes
+  command: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml --validate=false --kubeconfig /root/.kube/config
+  when: kubeadm_init is changed
+
+- name: Reiniciar servicio containerd después de instalar Calico
+  systemd:
+    name: containerd
+    state: restarted

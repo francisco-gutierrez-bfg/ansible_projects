@@ -1,0 +1,6 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Recargar Firewalld
+  systemd:
+    name: firewalld
+    state: reloaded

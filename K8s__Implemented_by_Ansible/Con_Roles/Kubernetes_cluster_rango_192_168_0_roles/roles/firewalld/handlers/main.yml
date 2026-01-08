@@ -1,0 +1,12 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Recargar firewalld
+  systemd:
+    name: firewalld
+    state: restarted
+    enabled: yes
+
+- name: Aplicar configuraciones de sysctl
+  service:
+    name: sysctl
+    state: restarted

@@ -1,0 +1,25 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Instalar Keepalived
+  ansible.builtin.package:
+    name: keepalived
+    state: present
+
+- name: Configurar Keepalived
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+  notify:
+    - Reiniciar Keepalived
+
+- name: Copiar script de  Monitoreo de HAProxy 
+  ansible.builtin.template:
+    src: check_haproxy.sh
+    dest: /usr/local/bin/check_haproxy.sh
+    mode: '0755'
+
+- name: Iniciar y habilitar servicio de Keepalived
+  ansible.builtin.systemd:
+    name: keepalived
+    state: started
+    enabled: yes

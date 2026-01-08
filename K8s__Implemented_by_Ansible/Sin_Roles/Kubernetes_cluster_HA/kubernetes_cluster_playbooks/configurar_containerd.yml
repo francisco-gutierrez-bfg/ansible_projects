@@ -1,0 +1,58 @@
+# Configuración de Cluster Kubernetes con Ansible
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Instalar y Configurar Containerd yKubelet
+  hosts: all
+  become: true
+  tasks:
+    - name: Disable swap
+      command: swapoff -a
+      ignore_errors: yes
+
+    - name: Agregar repositorio de Containerd
+      yum_repository:
+        name: containerd
+        description: Containerd YUM repo
+        baseurl: https://download.docker.com/linux/centos/7/x86_64/stable
+        gpgcheck: yes
+        gpgkey: https://download.docker.com/linux/centos/gpg
+        state: present
+
+    - name: Instalar Containerd
+      yum:
+        name: containerd
+        state: present
+
+    - name: Copiar configuracion de Containerd desde template
+      copy:
+        src: files/containerd-config.toml
+        dest: /etc/containerd/config.toml
+      notify: Reiniciar Containerd
+
+    - name: Parametrizar SystemdCgroup en configuracion de Containerd
+      lineinfile:
+        path: /etc/containerd/config.toml
+        regexp: '^\s*SystemdCgroup\s*=\s*false'
+        line: '            SystemdCgroup = true'
+        insertafter: '^\s*\[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options\]'
+      notify: Reiniciar Containerd
+
+    - name: Configurar kubelet para integrarlo con containerd
+      lineinfile:
+        path: /etc/default/kubelet
+        create: yes
+        line: 'KUBELET_EXTRA_ARGS="--container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock --runtime-cgroups=/system.slice/containerd.service --kubelet-cgroups=/system.slice/kubelet.service"'
+      notify: Reiniciar kubelet
+
+  handlers:
+    - name: Reiniciar Containerd
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+
+    - name: Reiniciar kubelet
+      systemd:
+        name: kubelet
+        state: restarted
+        enabled: yes

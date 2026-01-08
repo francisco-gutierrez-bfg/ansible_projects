@@ -1,0 +1,27 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Verificar que el directorio de configuración de kubelet exista
+  file:
+    path: /var/lib/kubelet
+    state: directory
+
+- name: Verificar que el archivo de configuración de kubelet exista
+  file:
+    path: /var/lib/kubelet/config.yaml
+    state: touch
+
+- name: Obtener comando join desde el nodo master1 para los nodos master secundarios
+  shell: cat /joincluster_master.sh
+  register: join_command
+  delegate_to: master1
+  when: inventory_hostname != 'master1'
+
+- name: Crear directorio /root/.kube/ si no existe
+  file:
+    path: /root/.kube
+    state: directory
+
+- name: Unir control planes secundarios al cluster de Kubernetes
+  ansible.builtin.script:
+    cmd: /joincluster_master.sh
+

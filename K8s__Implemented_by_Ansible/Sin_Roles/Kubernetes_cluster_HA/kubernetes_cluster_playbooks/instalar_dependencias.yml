@@ -1,0 +1,74 @@
+# Configuración de Cluster Kubernetes con Ansible
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Instalar Dependencias
+  hosts: all
+  become: true
+
+  tasks:
+
+    - name: Configurar SELinux en modo permisivo
+      command: setenforce 0
+      ignore_errors: true
+
+    - name: Deshabilitar SELinux
+      replace:
+        path: /etc/selinux/config
+        regexp: '^SELINUX=enforcing'
+        replace: 'SELINUX=permissive'
+
+    - name: Deshabilitar swap
+      command: swapoff -a
+
+    - name: Deshabilitar entrada de swap en /etc/fstab
+      replace:
+        path: /etc/fstab
+        regexp: '^(\s*)([^#\n]+\s+)(\w+\s+)swap(\s+.*)$'
+        replace: '#\1\2\3swap\4'
+        backup: yes
+
+    - name: Instalar pre-requisitos del sistema operativo
+      yum:
+        name:
+          - yum-utils
+          - device-mapper-persistent-data
+          - lvm2
+          - net-tools
+          - iproute-tc
+        state: present
+
+    - name: Agregar repositorio de kubernetes
+      yum_repository:
+        name: kubernetes
+        description: Kubernetes Repository
+        baseurl: https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+        gpgcheck: yes
+        enabled: yes
+        gpgkey: https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+
+    - name: Instalar kubeadm, kubelet y kubectl
+      yum:
+        name:
+          - kubeadm
+          - kubectl
+          - kubelet
+        state: present
+
+    - name: Habilitar br_netfilter
+      modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Verificar que net.bridge.bridge-nf-call-iptables se encuentre habilitado
+      sysctl:
+        name: net.bridge.bridge-nf-call-iptables
+        value: 1
+        state: present
+        reload: yes
+
+    - name: Verificar que net.ipv4.ip_forward se encuentre habilitado
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: 1
+        state: present
+        reload: yes

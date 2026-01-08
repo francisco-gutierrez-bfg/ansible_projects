@@ -1,0 +1,81 @@
+# Configuración de Cluster Kubernetes con Ansible
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Parametrizando Firewall
+  hosts: all
+  become: yes
+
+  tasks:
+    
+    - name: Cargar modulo de br_netfilter
+      modprobe:
+        name: br_netfilter
+      ignore_errors: true
+      become: yes
+
+    - name: Habilitando y configurando bridge-nf-call-iptables
+      stat:
+        path: /proc/sys/net/bridge/bridge-nf-call-iptables
+      register: bridge_nf_call_iptables_stat
+      delegate_to: "{{ item }}"
+      with_items: "{{ groups['all'] }}"
+      ignore_errors: true
+
+    - name: Habilitando y configurando bridge-nf-call-iptables
+      sysctl:
+        name: net.bridge.bridge-nf-call-iptables
+        value: 1
+        state: present
+        reload: yes
+      when: bridge_nf_call_iptables_stat.results[0].stat.exists == true
+      delegate_to: "{{ item }}"
+      with_items: "{{ groups['all'] }}"
+
+    - name: Instalar firewalld
+      package:
+        name: firewalld
+        state: present
+
+    - name: Iniciar y habilitar firewalld
+      service:
+        name: firewalld
+        state: started
+        enabled: yes
+
+    - name: Definir puertos de Kubernetes
+      set_fact:
+        kubernetes_ports:
+          - { port: 6443, protocol: tcp }
+          - { port: 8443, protocol: tcp }
+          - { port: 2379, protocol: tcp }
+          - { port: 2380, protocol: tcp }
+          - { port: 10250, protocol: tcp }
+          - { port: 10251, protocol: tcp }
+          - { port: 10252, protocol: tcp }
+          - { port: 10255, protocol: tcp }
+          - { port: 30000-32767, protocol: tcp }
+
+    - name: Agregar reglas de firewall para funcionamiento kubernetes
+      firewalld:
+        port: "{{ item.port }}/{{ item.protocol }}"
+        state: enabled
+        permanent: true
+      loop: "{{ kubernetes_ports }}"
+      notify: Recargar firewalld
+
+    - name: Habilitar IPv4 forwarding
+      ansible.builtin.lineinfile:
+        path: /etc/sysctl.conf
+        regexp: '^net.ipv4.ip_forward'
+        line: 'net.ipv4.ip_forward = 1'
+        state: present
+      notify: Aplicar configuraciones de sysctl
+
+  handlers:
+    - name: Recargar firewalld
+      service:
+        name: firewalld
+        state: reloaded
+
+    - name: Aplicar configuraciones de sysctl
+      ansible.builtin.command: sysctl -p

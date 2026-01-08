@@ -1,0 +1,17 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+[masters]
+master1 ansible_host=192.168.0.27
+master2 ansible_host=192.168.0.28
+master3 ansible_host=192.168.0.29
+
+[workers]
+worker1 ansible_host=192.168.0.30
+worker2 ansible_host=192.168.0.31
+worker3 ansible_host=192.168.0.32
+worker4 ansible_host=192.168.0.33
+
+[all:vars]
+ansible_user=root
+virtual_ip=192.168.0.35
+kube_version=1.29
+containerd_version=1.6.6

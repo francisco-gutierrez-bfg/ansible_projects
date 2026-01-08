@@ -1,0 +1,7 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Reiniciar Keepalived
+  systemd:
+    name: keepalived
+    state: restarted
+    enabled: yes

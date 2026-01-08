@@ -1,0 +1,42 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Apply MetalLB namespace
+  ansible.builtin.shell:
+    cmd: kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.11.0/manifests/namespace.yaml
+  args:
+    warn: false
+
+- name: Apply MetalLB manifests
+  ansible.builtin.shell:
+    cmd: kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.11.0/manifests/metallb.yaml
+  args:
+    warn: false
+
+- name: Create secret for MetalLB
+  ansible.builtin.shell:
+    cmd: |
+      kubectl create secret generic -n metallb-system memberlist --from-literal=secretkey="$(openssl rand -base64 128)"
+  args:
+    warn: false
+
+- name: Configure IP pool for MetalLB
+  vars:
+    metallb_ip: "192.168.0.32/28"  # Dirección IP y máscara de red para MetalLB
+  ansible.builtin.shell:
+    cmd: |
+      cat <<EOF | kubectl apply -f -
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        namespace: metallb-system
+        name: config
+      data:
+        config: |
+          address-pools:
+          - name: default
+            protocol: layer2
+            addresses:
+            - {{ metallb_ip }}
+      EOF
+  args:
+    warn: false

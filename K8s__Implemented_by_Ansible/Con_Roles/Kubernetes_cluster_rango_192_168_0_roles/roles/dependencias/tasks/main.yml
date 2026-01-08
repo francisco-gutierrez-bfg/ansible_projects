@@ -1,0 +1,109 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Parametrizando SELinux a modo  permisivo
+  command: setenforce 0
+  ignore_errors: true
+
+- name: Deshabilitar SELinux
+  replace:
+    path: /etc/selinux/config
+    regexp: '^SELINUX=enforcing'
+    replace: 'SELINUX=permissive'
+
+- name: Deshabilitar swap
+  command: swapoff -a
+
+- name: Deshabilitar swap permanentemente
+  replace:
+    path: /etc/fstab
+    regexp: '^(\s*)([^#\n]+\s+)(\w+\s+)swap(\s+.*)$'
+    replace: '#\1\2\3swap\4'
+    backup: yes
+
+- name: Instalar pre-requisitos del sistema operativo
+  yum:
+    name:
+      - yum-utils
+      - device-mapper-persistent-data
+      - lvm2
+      - net-tools
+      - iproute-tc
+      - nfs-utils
+    state: present
+
+- name: Agregar repositorio de Kubernetes
+  yum_repository:
+    name: kubernetes
+    description: Kubernetes Repository
+    baseurl: https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+    gpgcheck: yes
+    enabled: yes
+    gpgkey: https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+
+- name: Instalar kubeadm, kubelet y kubectl
+  yum:
+    name:
+      - kubeadm
+      - kubectl
+      - kubelet
+    state: present
+
+- name: Habilitar módulo br_netfilter
+  modprobe:
+    name: br_netfilter
+    state: present
+
+- name: Verificar que net.bridge.bridge-nf-call-iptables esté en 1
+  sysctl:
+    name: net.bridge.bridge-nf-call-iptables
+    value: 1
+    state: present
+    reload: yes
+
+- name: Verificar que net.ipv4.ip_forward esté en 1
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: 1
+    state: present
+    reload: yes
+
+- name: Verificar que el archivo de configuración de kubelet exista
+  file:
+    path: /etc/default/kubelet
+    state: touch
+
+- name: Verificar que el directorio de configuración de kubelet exista
+  file:
+    path: /var/lib/kubelet
+    state: directory
+
+- name: Configurar kubelet para que utilice la versión correcta de la imagen de pause
+  lineinfile:
+    path: /etc/default/kubelet
+    regexp: '^(\s*KUBELET_EXTRA_ARGS\s*=).*$'
+    line: 'KUBELET_EXTRA_ARGS=--container-runtime=remote --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock --image-pull-progress-deadline=2m --kubelet-cgroups=/systemd/system.slice --runtime-request-timeout=15m --cgroup-driver=systemd --pause-image=registry.k8s.io/pause:3.9'
+
+#- name: Verificar que el archivo de configuración de kubelet exista
+#  file:
+#    path: /var/lib/kubelet/config.yaml
+#    state: touch
+
+- name: Verificar estado de servicio de kubelet
+  systemd:
+    name: kubelet
+    state: started
+
+- name: Verificar que el directorio /root/.kube/config exista
+  file:
+    path: /root/.kube
+    state: directory
+
+- name: Verificar que el directorio de configuración de kubelet exista
+  file:
+    path: /var/lib/kubelet
+    state: directory
+
+- name: Verificar que el archivo de configuración de kubelet exista
+  file:
+    path: /var/lib/kubelet/config.yaml
+    state: touch

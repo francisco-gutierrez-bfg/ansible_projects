@@ -1,0 +1,37 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+global_defs {
+  notification_email {
+  }
+  router_id LVS_DEVEL
+  vrrp_skip_check_adv_addr
+  vrrp_garp_interval 0
+  vrrp_gna_interval 0
+}
+
+vrrp_script chk_haproxy {
+  script "/usr/local/bin/check_haproxy.sh"
+  interval 2
+  weight 2
+}
+
+vrrp_instance VI_1 {
+    state MASTER
+    interface enp0s3
+    virtual_router_id 51
+    priority 100
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass 11111
+    }
+    unicast_src_ip 192.168.0.27      # The IP address of this machine
+    unicast_peer {
+        192.168.0.28                         # The IP address of peer machines
+        192.168.0.29
+    }
+    virtual_ipaddress {
+        192.168.0.35
+    }
+    track_script {
+        chk_haproxy
+    }

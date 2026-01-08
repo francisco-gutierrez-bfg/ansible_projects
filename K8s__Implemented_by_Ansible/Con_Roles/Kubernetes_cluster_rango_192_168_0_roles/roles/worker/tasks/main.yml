@@ -1,0 +1,23 @@
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Verificar que el directorio de kubelet exista
+  file:
+    path: /var/lib/kubelet
+    state: directory
+
+- name: Verificar que el archivo de configuración de kubelet exista
+  file:
+    path: /var/lib/kubelet/config.yaml
+    state: touch
+
+- name: Obtener comando join desde el nodo master1 para los nodos worker
+  shell: cat /joincluster_worker.sh
+
+- name: Crear directorio /root/.kube/ si no existe
+  file:
+    path: /root/.kube
+    state: directory
+
+- name: Unir nodos worker al cluster de Kubernetes
+  ansible.builtin.script:
+    cmd: /joincluster_worker.sh

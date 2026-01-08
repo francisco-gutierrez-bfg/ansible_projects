@@ -1,0 +1,39 @@
+# Configuración de Cluster Kubernetes con Ansible
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Desplegar Keepalived con HAProxy
+  hosts: masters
+  become: true
+
+  tasks:
+    - name: Instalar Keepalived
+      ansible.builtin.package:
+        name: keepalived
+        state: present
+
+    - name: Configurar Keepalived
+      ansible.builtin.template:
+        src: keepalived.conf.j2
+        dest: /etc/keepalived/keepalived.conf
+      notify:
+        - Reiniciar Keepalived
+
+    - name: Copiar script de  Monitoreo de HAProxy 
+      ansible.builtin.template:
+        src: check_haproxy.sh
+        dest: /usr/local/bin/check_haproxy.sh
+        mode: '0755'
+
+    - name: Iniciar y habilitar servicio de Keepalived
+      ansible.builtin.systemd:
+        name: keepalived
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Reiniciar Keepalived
+      ansible.builtin.systemd:
+        name: keepalived
+        state: restarted
+        enabled: yes
+

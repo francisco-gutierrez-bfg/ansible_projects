@@ -1,0 +1,68 @@
+---
+- name: Eliminar todos los contenedores Docker y desinstalar Docker en CentOS
+  hosts: all
+  become: true
+  tasks:
+    - name: Verificar si Docker está instalado
+      shell: which docker
+      register: docker_installed
+      ignore_errors: yes
+
+    - name: Detener todos los contenedores Docker
+      shell: docker stop $(docker ps -a -q)
+      ignore_errors: yes
+      when: docker_installed.stdout.find('docker') != -1
+      environment:
+        PATH: "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/usr/bin/docker"
+
+    - name: Eliminar todos los contenedores Docker
+      shell: docker rm $(docker ps -a -q)
+      ignore_errors: yes
+      when: docker_installed.stdout.find('docker') != -1
+      environment:
+        PATH: "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/usr/bin/docker"
+
+    - name: Eliminar todas las imágenes Docker
+      shell: docker rmi $(docker images -q)
+      ignore_errors: yes
+      when: docker_installed.stdout.find('docker') != -1
+      environment:
+        PATH: "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/usr/bin/docker"
+
+    - name: Desinstalar Docker
+      yum:
+        name: docker-ce
+        state: absent
+
+    - name: Eliminar repositorio Docker
+      file:
+        path: /etc/yum.repos.d/docker-ce.repo
+        state: absent
+
+    - name: Eliminar directorios de Docker
+      file:
+        path: /var/lib/docker
+        state: absent
+        recurse: yes
+
+    - name: Limpiar paquetes innecesarios
+      yum:
+        name:
+          - yum-utils
+          - device-mapper-persistent-data
+          - lvm2
+        state: absent
+
+    - name: Detener y deshabilitar Docker
+      systemd:
+        name: docker
+        enabled: no
+        state: stopped
+      ignore_errors: yes
+
+    - name: Eliminar dependencias de Docker
+      shell: yum remove -y containerd.io docker-ce-cli docker-ce docker-ce-rootless-extras docker-scan-plugin
+      ignore_errors: yes
+
+    - name: Limpiar caché de yum
+      command: yum clean all

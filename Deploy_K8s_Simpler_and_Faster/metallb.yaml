@@ -1,0 +1,52 @@
+# Configuración de Cluster Kubernetes con Ansible
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- name: Desplegar y Configurar MetalLB
+  hosts: masters
+  become: yes
+  vars:
+    metallb_version: "v0.13.7"  # Reemplace con la versión deseada de MetalLB
+    metallb_ip: "192.168.xx.61-192.168.xx.66"  # Rango de direcciones IP para MetalLB
+
+  tasks:
+    - name: Instalar MetalLB
+      block:
+        - name: Crear namespace e instalar MetalLB
+          shell: >
+            kubectl create namespace metallb-system &&
+            kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/{{ metallb_version }}/config/manifests/metallb-native.yaml
+
+        - name: Eliminar posibles conflictos con los webhooks
+          shell: kubectl delete ValidatingWebhookConfiguration metallb-webhook-configuration || true
+          register: delete_webhook_result
+          changed_when: "'not found' not in delete_webhook_result.stderr"
+
+        - name: Configurar MetalLB
+          copy:
+            dest: /tmp/metallb-config.yaml
+            content: |
+              apiVersion: metallb.io/v1beta1
+              kind: IPAddressPool
+              metadata:
+                name: default-pool
+                namespace: metallb-system
+              spec:
+                addresses:
+                - {{ metallb_ip }}
+              ---
+              apiVersion: metallb.io/v1beta1
+              kind: L2Advertisement
+              metadata:
+                name: default
+                namespace: metallb-system
+              spec:
+                ipAddressPools:
+                - default-pool
+          notify: Aplicar configuración de MetalLB
+
+#    - name: Instalar Ingress NGINX
+#      shell: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+
+  handlers:
+    - name: Aplicar configuración de MetalLB
+      shell: kubectl apply -f /tmp/metallb-config.yaml

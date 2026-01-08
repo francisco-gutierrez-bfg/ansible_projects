@@ -1,0 +1,10 @@
+# Configuración de Cluster Kubernetes con Ansible
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+
+[masters]
+master ansible_host=192.168.1.60
+
+[workers]
+worker1 ansible_host=192.168.1.23
+worker2 ansible_host=192.168.1.28
+worker3 ansible_host=192.168.1.39

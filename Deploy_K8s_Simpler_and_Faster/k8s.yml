@@ -1,0 +1,150 @@
+# Configuración de Cluster Kubernetes con Ansible
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+---
+- hosts: all
+  become: yes
+  vars:
+    kube_version: "1.30"  # Ajustar a la versión deseada
+    containerd_version: "1.7.4" # Ajustar a la versión deseada
+    flannel_version: "v0.22.1" # Ajustar a la versión deseada
+
+  tasks:
+    - name: Deshabilitar SELinux permanentemente
+      shell: |
+        setenforce 0
+        sed -i 's/^SELINUX=.*/SELINUX=disabled/' /etc/selinux/config
+
+    - name: Deshabilitar firewalld permanentemente
+      service:
+        name: firewalld
+        state: stopped
+        enabled: no
+
+    - name: Deshabilitar swap permanentemente
+      shell: |
+        swapoff -a
+        sed -i '/swap/d' /etc/fstab
+
+    - name: Cargar módulos del kernel necesarios
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - br_netfilter
+        - overlay
+
+    - name: Configurar parámetros de sysctl para Kubernetes networking
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_set: yes
+        state: present
+        reload: yes
+      with_items:
+        - { key: "net.bridge.bridge-nf-call-iptables", value: "1" }
+        - { key: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+        - { key: "net.ipv4.ip_forward", value: "1" }
+
+    - name: Verificar configuración de sysctl
+      command: sysctl -p
+
+    - name: Agregar repositorio de Kubernetes
+      yum_repository:
+        name: kubernetes
+        description: Kubernetes Repository
+        baseurl: https://pkgs.k8s.io/core:/stable:/v{{ kube_version }}/rpm/
+        gpgcheck: yes
+        enabled: yes
+        gpgkey: https://pkgs.k8s.io/core:/stable:/v{{ kube_version }}/rpm/repodata/repomd.xml.key
+
+    - name: Instalar dependencias necesarias
+      dnf:
+        name:
+          - conntrack
+          - ipvsadm
+          - ipset
+          - git
+          - jq
+          - socat
+          - ebtables
+          - ethtool
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: latest
+        update_cache: yes
+
+    - name: Configurar kubelet para utilizar configuración correcta
+      block:
+        - name: Asegurarse de que el archivo de configuración de kubelet contenga los parámetros necesarios
+          blockinfile:
+            path: /var/lib/kubelet/config.yaml
+            block: |
+              cgroupDriver: systemd
+              containerRuntimeEndpoint: unix:///var/run/containerd/containerd.sock
+              imagePullProgressDeadline: 2m
+              runtimeRequestTimeout: 15m
+              podInfraContainerImage: registry.k8s.io/pause:3.9
+            create: yes
+            marker: "# {mark} BLOQUE ADMINISTRADO POR ANSIBLE - Configuración de kubelet"
+
+        - name: Remover flags deprecados en KUBELET_EXTRA_ARGS
+          lineinfile:
+            path: /etc/sysconfig/kubelet
+            regexp: '^(\s*KUBELET_EXTRA_ARGS\s*=).*$'
+            line: 'KUBELET_EXTRA_ARGS=""'
+
+    - name: Reiniciar y habilitar kubelet
+      systemd:
+        name: kubelet
+        state: restarted
+        enabled: yes
+
+    - name: Agregar repositorio oficial de Docker
+      shell: |
+        dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        dnf makecache
+
+    - name: Configurar containerd
+      block:
+        - name: Instalar containerd
+          dnf:
+            name: "containerd.io"
+            state: present
+
+        - name: Crear archivo de configuración para containerd
+          shell: |
+            mkdir -p /etc/containerd
+            containerd config default > /etc/containerd/config.toml
+            sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+
+        - name: Reiniciar y habilitar containerd
+          systemd:
+            name: containerd
+            state: restarted
+            enabled: yes
+
+    - name: Inicializar el nodo master (solo en master)
+      when: "'masters' in group_names"
+      shell: |
+        kubeadm init --cri-socket unix:///run/containerd/containerd.sock --pod-network-cidr=10.244.0.0/16
+
+    - name: Configurar kubectl para el usuario root (solo en master)
+      when: "'masters' in group_names"
+      shell: |
+        mkdir -p $HOME/.kube
+        cp /etc/kubernetes/admin.conf $HOME/.kube/config
+        chown $(id -u):$(id -g) $HOME/.kube/config
+
+    - name: Generar token para unir workers (solo en master)
+      when: "'masters' in group_names"
+      shell: kubeadm token create --print-join-command
+      register: join_command
+
+    - name: Unir nodos workers al clúster
+      when: "'workers' in group_names"
+      shell: "{{ hostvars[groups['masters'][0]].join_command.stdout }}"
+
+    - name: Instalar Flannel CNI
+      when: "'masters' in group_names"
+      shell: kubectl apply -f https://github.com/flannel-io/flannel/releases/download/{{ flannel_version }}/kube-flannel.yml

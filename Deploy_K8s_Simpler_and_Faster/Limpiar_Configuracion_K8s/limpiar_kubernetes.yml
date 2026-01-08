@@ -1,0 +1,52 @@
+# Configuración de Cluster Kubernetes con Ansible
+# Autor: Francisco Javier Gutierrez | Unix/Linux Architect & Cloud Engineer
+
+- name: Limpieza y reset de configuración Kubernetes 
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Verificar que el servicio firewalld se encuentre habilitado
+      systemd:
+        name: firewalld
+        state: stopped
+        enabled: no
+
+    - name: Detener servicio kubelet
+      systemd:
+        name: kubelet
+        enabled: no
+
+    - name: Detener servicio containerd
+      systemd:
+        name: containerd
+        enabled: no
+
+    - name: Ejecutar kubeadm reset con la opción --force
+      command: kubeadm reset --force
+      ignore_errors: yes
+
+    - name: Remover configuraciones existentes de Kubernetes (en caso de reconfiguración)
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/kubernetes/*
+        - /etc/cni
+        - /etc/kubernetes/manifests/kube-apiserver.yaml
+        - /etc/kubernetes/manifests/kube-controller-manager.yaml
+        - /etc/kubernetes/manifests/kube-scheduler.yaml
+        - /etc/kubernetes/manifests/etcd.yaml
+        - /var/lib/etcd
+        - /var/lib/cni
+        - /var/lib/kubelet
+        - /joincluster_master.sh
+        - /joincluster_worker.sh
+
+    - name: Desisntalar Kubernetes y Containerd
+      shell: |
+        dnf remove kubeadm kubelet containerd -y
+
+    - name: Mostrar mensaje para reiniciar los nodos
+      debug:
+        msg: "Por favor reinicie el nodo master y los nodos worker para que el proceso de limpieza se complete"
